@@ -256,3 +256,60 @@ test_cluster_install.py::test_router PASSED                                     
 test_cluster_install.py::test_registry PASSED                                                                                                                                                                                                                        [ 83%]
 test_cluster_install.py::test_fluentd FAILED
 ```
+
+## Contributing?
+#### Adding new test, a guidance.
+As example now, we want to add alertmanager test suites.
+
+1a.Edit `conftest.py` append last line under `def pytest_addoption(parser):` function block:
+```asciidoc
+    parser.addoption(
+        "--alertmanager-pod-count", action="store", default=2, help="Alertmanager pod count."
+    )
+```
+* `--alertmanager-pod-count` will be the command argument.
+* `default` is the default value when no argument passed.
+* `help` defined what this argument is all about.
+
+1b. At the last line, append a pytest fixtures (fixtures only needed when argument being passed, 
+for node count based, refer to fluentd test) for this new argument.
+```asciidoc
+@pytest.fixture
+def alertmanager_pod_count(request):
+    return request.config.getoption("--alertmanager-pod-count")
+```
+* `@pytest.fixture` set this function decorated by pytest fixtures.
+* `def alertmanager_pod_count(request):` alertmanager_pod_count is the function stored to carry value for actual pytest.
+* `return request.config.getoption("--alertmanager-pod-count")`: return value of the argument value.
+
+2.Update `pytest.ini`, this act as argument source without need to manually type each time the test run :
+
+* Before
+```asciidoc
+[pytest]
+# 1. Run all tests by default.
+addopts = --etcd-node-count=1 --router-node-count=1 --registry-pod-count=1 
+```
+* After
+```asciidoc
+[pytest]
+# 1. Run all tests by default.
+addopts = --etcd-node-count=1 --router-node-count=1 --registry-pod-count=1 --alertmanager-pod-count=2
+```
+
+
+3.Add new test function in `test_cluster_install.py` for the alertmanager:
+```asciidoc
+@pytest.mark.monitoring
+def test_monitoring_alertmanager(alertmanage_pod_count):
+    assert k8s_client.get_running_pods_by_label(
+        'openshift-monitoring', 'app=alertmanager') == int(alertmanager_pod_count), \
+        "Should have {} prometheus pod in the cluster".format(alertmanager_pod_count)
+```
+
+* `@pytest.mark.monitoring` : this will marked this test as `monitoring`, will be used when we want to 
+select/deselect test suites and also a test group identification.
+* `def test_monitoring_alertmanager(alertmanage_pod_count):`: define this test suite with argument data from `conftest.py`.
+*  the rest is the logic to run python `assert` test. in this case we are checking alertmanager pod that are running agains the specified value.
+
+4.That`s that. We may now run a test 'pytest -v'.
